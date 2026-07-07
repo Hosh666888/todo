@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>待办事项</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <script>
     (function () {
       if (localStorage.getItem('todo-theme') === 'light') {
@@ -202,11 +203,52 @@
       z-index: 0;
     }
 
+    #particleCanvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .typewriter-active::after {
+      content: '|';
+      display: inline-block;
+      margin-left: 2px;
+      color: var(--accent);
+      animation: blink-cursor 0.7s step-end infinite;
+    }
+
+    @keyframes blink-cursor {
+      50% { opacity: 0; }
+    }
+
+    .todo-grid {
+      perspective: 1200px;
+    }
+
+    .todo-item {
+      transform-style: preserve-3d;
+      backface-visibility: hidden;
+    }
+
+    .todo-item.gsap-animating {
+      transition: none !important;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .typewriter-active::after { display: none; }
+      .todo-item { transform: none !important; }
+    }
+
     .app {
       display: flex;
       height: 100vh;
       position: relative;
       z-index: 1;
+    }
+
+    body.booting .app {
+      pointer-events: none;
     }
 
     /* ── Sidebar ── */
@@ -996,7 +1038,7 @@
       box-shadow: var(--shadow);
       min-height: 200px;
       overflow: hidden;
-      transition: transform .2s, border-color .2s, box-shadow .2s, background .2s;
+      transition: border-color .2s, box-shadow .2s, background .2s;
     }
 
     .todo-item[class*="status-"] {
@@ -1057,12 +1099,11 @@
 
     .todo-item:not([class*="status-"]):hover {
       border-color: var(--border-glow);
-      transform: translateY(-2px);
       box-shadow: var(--shadow), var(--glow);
     }
 
     .todo-item[class*="status-"]:hover {
-      transform: translateY(-2px);
+      /* hover lift handled via box-shadow per status */
     }
 
     .todo-del-btn {
@@ -1201,6 +1242,13 @@
       background: transparent;
       color: var(--text);
       min-height: 44px;
+      padding: 0;
+      font-family: inherit;
+      resize: none;
+      overflow: hidden;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
     }
 
     .status-btn {
@@ -1265,39 +1313,32 @@
       color: var(--status-onhold-text);
     }
 
-    [data-theme="dark"] .todo-item.status-pending .todo-text,
-    [data-theme="dark"] .todo-item.status-pending .todo-note-label {
+    [data-theme="dark"] .todo-item.status-pending .todo-text {
       color: var(--status-pending-text);
     }
 
-    [data-theme="dark"] .todo-item.status-completed .todo-text,
-    [data-theme="dark"] .todo-item.status-completed .todo-note-label {
+    [data-theme="dark"] .todo-item.status-completed .todo-text {
       color: var(--status-completed-text);
     }
 
-    [data-theme="dark"] .todo-item.status-on_hold .todo-text,
-    [data-theme="dark"] .todo-item.status-on_hold .todo-note-label {
+    [data-theme="dark"] .todo-item.status-on_hold .todo-text {
       color: var(--status-onhold-text);
     }
 
     [data-theme="dark"] .todo-item[class*="status-"] .todo-note {
-      background: rgba(0, 0, 0, 0.25);
       border-color: rgba(255, 255, 255, 0.12);
       color: var(--text);
     }
 
-    [data-theme="light"] .todo-item.status-pending .todo-text,
-    [data-theme="light"] .todo-item.status-pending .todo-note-label {
+    [data-theme="light"] .todo-item.status-pending .todo-text {
       color: var(--status-pending-text);
     }
 
-    [data-theme="light"] .todo-item.status-completed .todo-text,
-    [data-theme="light"] .todo-item.status-completed .todo-note-label {
+    [data-theme="light"] .todo-item.status-completed .todo-text {
       color: var(--status-completed-text);
     }
 
-    [data-theme="light"] .todo-item.status-on_hold .todo-text,
-    [data-theme="light"] .todo-item.status-on_hold .todo-note-label {
+    [data-theme="light"] .todo-item.status-on_hold .todo-text {
       color: var(--status-onhold-text);
     }
 
@@ -1314,7 +1355,6 @@
     }
 
     [data-theme="light"] .todo-item[class*="status-"] .todo-note {
-      background: rgba(255, 255, 255, 0.55);
       border: 1px solid rgba(0, 0, 0, 0.12);
       color: #0f172a;
     }
@@ -1337,37 +1377,33 @@
 
     .todo-note-wrap {
       border-top: 1px solid var(--border);
-      padding: 0 14px 12px;
+      padding: 12px 14px 12px;
       margin-top: auto;
-    }
-
-    .todo-note-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      padding: 8px 0 4px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
     }
 
     .todo-note {
       width: 100%;
-      min-height: 48px;
+      min-height: 72px;
       padding: 8px 10px;
       border: 1px solid var(--border);
       border-radius: 8px;
       font-size: 13px;
       font-family: inherit;
-      resize: vertical;
+      resize: none;
+      overflow: hidden;
       outline: none;
       transition: border-color .2s, box-shadow .2s;
       color: var(--text-muted);
-      background: var(--input-bg);
+      background: transparent;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      white-space: pre-wrap;
     }
 
     .todo-note:focus {
       border-color: var(--accent);
       color: var(--text);
-      background: var(--input-bg-focus);
+      background: transparent;
       box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.1);
     }
 
@@ -1766,6 +1802,7 @@
   </style>
 </head>
 <body>
+  <canvas id="particleCanvas" aria-hidden="true"></canvas>
   <div class="app">
     <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="打开日期导航" aria-expanded="false" aria-controls="sidebar">☰</button>
     <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
@@ -1856,6 +1893,8 @@
 
   <div class="copy-toast" id="copyToast" role="status" aria-live="polite"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="animations.js"></script>
   <script src="todo.js"></script>
 </body>
 </html>

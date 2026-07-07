@@ -367,7 +367,8 @@
     }
 
     /* ── Main Panel ── */
-    function renderMain() {
+    function renderMain(opts = {}) {
+      const deferCards = opts.deferCards === true;
       const panel = document.getElementById('mainPanel');
       ensureDate(selectedDate);
       const todos = data.dates[selectedDate];
@@ -401,7 +402,9 @@
         </div>
       `;
 
-      renderTodos();
+      if (!deferCards) {
+        renderTodos(opts.todoOpts || {});
+      }
 
       if (!readOnly) {
         document.getElementById('addTodoBtn').addEventListener('click', addTodo);
@@ -409,6 +412,19 @@
           if (e.key === 'Enter') addTodo();
         });
       }
+
+      if (!deferCards && window.TodoAnimations && opts.animate !== false) {
+        const h2 = panel.querySelector('.main-header h2');
+        if (h2) TodoAnimations.typewriterTitle(h2, formatDisplay(selectedDate));
+        TodoAnimations.animateMainPanel(panel);
+        TodoAnimations.animateStats(counts);
+      }
+    }
+
+    function renderMainCards() {
+      renderTodos({ animate: false });
+      const counts = countByStatus(data.dates[selectedDate]);
+      if (window.TodoAnimations) TodoAnimations.animateStats(counts);
     }
 
     let copyToastTimer = null;
@@ -420,12 +436,16 @@
         confirmResolver = resolve;
         document.getElementById('confirmTitle').textContent = title;
         document.getElementById('confirmMessage').textContent = message;
-        document.getElementById('confirmOverlay').classList.add('show');
+        const overlay = document.getElementById('confirmOverlay');
+        if (window.TodoAnimations) TodoAnimations.showOverlay(overlay);
+        else overlay.classList.add('show');
       });
     }
 
     function closeConfirm(result) {
-      document.getElementById('confirmOverlay').classList.remove('show');
+      const overlay = document.getElementById('confirmOverlay');
+      if (window.TodoAnimations) TodoAnimations.hideOverlay(overlay);
+      else overlay.classList.remove('show');
       if (confirmResolver) {
         confirmResolver(result);
         confirmResolver = null;
@@ -441,9 +461,14 @@
     function showCopyToast(message) {
       const toast = document.getElementById('copyToast');
       toast.textContent = message;
-      toast.classList.add('show');
       clearTimeout(copyToastTimer);
-      copyToastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+      if (window.TodoAnimations) {
+        TodoAnimations.showToast(toast);
+        copyToastTimer = setTimeout(() => TodoAnimations.hideToast(toast), 2200);
+      } else {
+        toast.classList.add('show');
+        copyToastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+      }
     }
 
     async function copyTextToClipboard(text) {
@@ -553,6 +578,7 @@
       ).join('');
       const el = document.createElement('div');
       el.className = `todo-item status-${status}${readOnly ? ' read-only' : ''}`;
+      el.dataset.id = todo.id;
       el.innerHTML = `
         ${readOnly ? '' : `<button class="todo-del-btn" data-del="${todo.id}" title="删除" aria-label="删除">×</button>`}
         <div class="todo-top">
@@ -560,11 +586,10 @@
             <span class="todo-index">#${todo.order}</span>
             <span class="todo-status-badge ${status}">${STATUS_LABELS[status]}</span>
           </div>
-          <input class="todo-text" value="${esc(todo.text)}" data-id="${todo.id}"${readOnly ? ' readonly' : ''}>
+          <textarea class="todo-text" rows="1" data-id="${todo.id}"${readOnly ? ' readonly' : ''}>${esc(todo.text)}</textarea>
           ${readOnly ? '' : `<div class="todo-actions">${actionBtns}</div>`}
         </div>
         <div class="todo-note-wrap">
-          <div class="todo-note-label">备注</div>
           <textarea class="todo-note" data-id="${todo.id}" placeholder="添加备注…"${readOnly ? ' readonly' : ''}>${esc(todo.note || '')}</textarea>
         </div>
       `;
@@ -580,17 +605,23 @@
         btn.addEventListener('click', () => deleteTodo(btn.dataset.del));
       });
 
-      container.querySelectorAll('.todo-text').forEach(input => {
-        input.addEventListener('change', () => updateTodoText(input.dataset.id, input.value));
-        input.addEventListener('blur', () => updateTodoText(input.dataset.id, input.value));
+      container.querySelectorAll('.todo-text').forEach(ta => {
+        autoResizeTextarea(ta);
+        ta.addEventListener('input', () => autoResizeTextarea(ta));
+        ta.addEventListener('blur', () => updateTodoText(ta.dataset.id, ta.value));
       });
 
       container.querySelectorAll('.todo-note').forEach(ta => {
-        ta.addEventListener('input', debounce(() => updateTodoNote(ta.dataset.id, ta.value), 300));
+        autoResizeTextarea(ta);
+        const debouncedUpdate = debounce(() => updateTodoNote(ta.dataset.id, ta.value), 300);
+        ta.addEventListener('input', () => {
+          autoResizeTextarea(ta);
+          debouncedUpdate();
+        });
       });
     }
 
-    function renderTodos() {
+    function renderTodos(opts = {}) {
       const container = document.getElementById('todoItems');
       const todos = data.dates[selectedDate];
       const readOnly = isPastDate(selectedDate);
@@ -609,6 +640,10 @@
         { key: 'default', title: '默认计划' },
         { key: 'unplanned', title: '计划外' }
       ];
+
+      container.querySelectorAll('.todo-item').forEach(card => {
+        if (window.TodoAnimations) TodoAnimations.resetCard(card);
+      });
 
       container.innerHTML = '';
       for (const section of sections) {
@@ -632,7 +667,22 @@
         container.appendChild(sectionEl);
       }
 
+      container.querySelectorAll('.todo-text, .todo-note').forEach(autoResizeTextarea);
       if (!readOnly) bindTodoEvents(container);
+
+      if (window.TodoAnimations) {
+        if (opts.newCardId) {
+          const card = container.querySelector(`.todo-item[data-id="${opts.newCardId}"]`);
+          if (card) TodoAnimations.flipInCard(card);
+        } else if (opts.animate !== false) {
+          TodoAnimations.scheduleFlipInCards(container);
+        }
+      }
+    }
+
+    function autoResizeTextarea(el) {
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
     }
 
     function esc(s) {
@@ -655,12 +705,31 @@
       const plan = planInput && planInput.value === 'unplanned' ? 'unplanned' : 'default';
       const todos = data.dates[selectedDate];
       const order = getNextOrder(todos, plan);
-      todos.push({ id: uid(), text, status: 'pending', plan, note: '', order });
+      const newId = uid();
+      todos.push({ id: newId, text, status: 'pending', plan, note: '', order });
       saveData();
       input.value = '';
       renderTree();
-      renderTodos();
+      renderTodos({ newCardId: newId });
       updateHeaderStats();
+    }
+
+    function refreshTodoCardDom(card, todo, readOnly) {
+      const status = getTodoStatus(todo);
+      const actions = getStatusActions(status);
+      const actionBtns = actions.map(a =>
+        `<button class="status-btn action-${a.status}" data-id="${todo.id}" data-status="${a.status}">${a.label}</button>`
+      ).join('');
+      card.className = `todo-item status-${status}${readOnly ? ' read-only' : ''}`;
+      card.dataset.id = todo.id;
+      const badge = card.querySelector('.todo-status-badge');
+      if (badge) {
+        badge.className = `todo-status-badge ${status}`;
+        badge.textContent = STATUS_LABELS[status];
+      }
+      const actionsEl = card.querySelector('.todo-actions');
+      if (actionsEl) actionsEl.innerHTML = actionBtns;
+      if (!readOnly) bindTodoEvents(card);
     }
 
     function setTodoStatus(id, newStatus) {
@@ -668,11 +737,22 @@
       if (!STATUS_ORDER.includes(newStatus)) return;
       const todo = data.dates[selectedDate].find(t => t.id === id);
       if (!todo || getTodoStatus(todo) === newStatus) return;
-      todo.status = newStatus;
-      saveData();
-      renderTree();
-      renderTodos();
-      updateHeaderStats();
+
+      const card = document.querySelector(`.todo-item[data-id="${id}"]`);
+      const readOnly = isPastDate(selectedDate);
+      const apply = () => {
+        todo.status = newStatus;
+        saveData();
+        if (card) refreshTodoCardDom(card, todo, readOnly);
+        renderTree();
+        updateHeaderStats();
+      };
+
+      if (card && window.TodoAnimations && TodoAnimations.isEnabled()) {
+        TodoAnimations.flipCardStatus(card, apply);
+      } else {
+        apply();
+      }
     }
 
     function deleteTodo(id) {
@@ -687,12 +767,20 @@
       }).then(confirmed => {
         if (!confirmed) return;
         const planType = getPlanType(removed);
-        data.dates[selectedDate] = todos.filter(t => t.id !== id);
-        reindexPlanTodos(data.dates[selectedDate], planType);
-        saveData();
-        renderTree();
-        renderTodos();
-        updateHeaderStats();
+        const card = document.querySelector(`.todo-item[data-id="${id}"]`);
+        const finalize = () => {
+          data.dates[selectedDate] = todos.filter(t => t.id !== id);
+          reindexPlanTodos(data.dates[selectedDate], planType);
+          saveData();
+          renderTree();
+          renderTodos({ animate: false });
+          updateHeaderStats();
+        };
+        if (card && window.TodoAnimations && TodoAnimations.isEnabled()) {
+          TodoAnimations.removeCard(card, finalize);
+        } else {
+          finalize();
+        }
       });
     }
 
@@ -721,6 +809,7 @@
           <div>未完成 <span>${counts.pending}</span></div>
           <div>完成 <span>${counts.completed}</span></div>
           <div>搁置 <span>${counts.on_hold}</span></div>`;
+        if (window.TodoAnimations) TodoAnimations.animateStats(counts);
       }
       const infoEl = document.querySelector('.date-info');
       if (infoEl) infoEl.textContent = `共 ${todos.length} 项待办`;
@@ -805,6 +894,7 @@
       datePickerPanel.classList.add('open');
       datePickerTrigger.classList.add('open');
       datePickerTrigger.setAttribute('aria-expanded', 'true');
+      if (window.TodoAnimations) TodoAnimations.openDatePickerPanel(datePickerPanel);
     }
 
     function closeDatePicker() {
@@ -1061,7 +1151,15 @@
     }
 
     function setImportBusy(busy) {
-      document.getElementById('importOverlay').classList.toggle('show', busy);
+      const overlay = document.getElementById('importOverlay');
+      if (busy) {
+        if (window.TodoAnimations) TodoAnimations.showOverlay(overlay);
+        else overlay.classList.add('show');
+      } else if (window.TodoAnimations) {
+        TodoAnimations.hideOverlay(overlay);
+      } else {
+        overlay.classList.remove('show');
+      }
       document.getElementById('importBtn').disabled = busy;
       document.getElementById('exportBtn').disabled = busy;
       document.getElementById('addDateBtn').disabled = busy;
@@ -1234,11 +1332,24 @@
       sidebarBackdrop.classList.add('show');
       sidebarBackdrop.setAttribute('aria-hidden', 'false');
       mobileMenuBtn.setAttribute('aria-expanded', 'true');
+      if (isMobileLayout() && window.TodoAnimations && TodoAnimations.isEnabled()) {
+        gsap.set(sidebarEl, { x: '-105%' });
+        TodoAnimations.openMobileSidebar(sidebarEl, sidebarBackdrop);
+      }
     }
 
     function closeSidebar() {
-      sidebarEl.classList.remove('open');
-      sidebarBackdrop.classList.remove('show');
+      if (isMobileLayout() && window.TodoAnimations && TodoAnimations.isEnabled()) {
+        TodoAnimations.closeMobileSidebar(sidebarEl, sidebarBackdrop);
+        gsap.delayedCall(0.28, () => {
+          sidebarEl.classList.remove('open');
+          sidebarBackdrop.classList.remove('show');
+          gsap.set(sidebarEl, { clearProps: 'transform' });
+        });
+      } else {
+        sidebarEl.classList.remove('open');
+        sidebarBackdrop.classList.remove('show');
+      }
       sidebarBackdrop.setAttribute('aria-hidden', 'true');
       mobileMenuBtn.setAttribute('aria-expanded', 'false');
     }
@@ -1259,8 +1370,21 @@
       if (e.key === 'Escape' && sidebarEl.classList.contains('open')) closeSidebar();
     });
 
+    function resetMobileSidebarState() {
+      if (!isMobileLayout()) return;
+      sidebarEl.classList.remove('open');
+      sidebarBackdrop.classList.remove('show');
+      sidebarBackdrop.setAttribute('aria-hidden', 'true');
+      mobileMenuBtn.setAttribute('aria-expanded', 'false');
+      if (typeof gsap !== 'undefined') gsap.set(sidebarEl, { clearProps: 'transform' });
+    }
+
     window.addEventListener('resize', () => {
-      if (!isMobileLayout()) closeSidebar();
+      if (isMobileLayout()) resetMobileSidebarState();
+      else {
+        closeSidebar();
+        if (typeof gsap !== 'undefined') gsap.set(sidebarEl, { clearProps: 'transform' });
+      }
       updateEmptyHint();
     });
 
@@ -1281,6 +1405,19 @@
     renderTree();
     updateEmptyHint();
     updateSidebarActions();
-    if (selectedDate) {
-      renderMain();
+    resetMobileSidebarState();
+
+    if (window.TodoAnimations && TodoAnimations.isEnabled()) {
+      gsap.set('.sidebar-header h1', { opacity: 0, y: -12 });
+      TodoAnimations.init(
+        () => {
+          if (selectedDate) renderMain({ deferCards: true });
+        },
+        () => {
+          if (selectedDate) renderMainCards();
+        }
+      );
+    } else {
+      if (selectedDate) renderMain();
+      if (window.TodoAnimations) TodoAnimations.init();
     }
