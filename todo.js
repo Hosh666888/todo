@@ -24,6 +24,32 @@
 
     applyTheme(getTheme());
 
+    const COUNTDOWN_TARGET = new Date('2026-03-30T18:29:00');
+    let countdownTimerId = null;
+
+    function updateCountdown() {
+      const el = document.getElementById('countdownTimer');
+      if (!el) return;
+
+      const diff = Math.abs(Date.now() - COUNTDOWN_TARGET.getTime());
+      const totalSec = Math.floor(diff / 1000);
+      const days = Math.floor(totalSec / 86400);
+      const hours = Math.floor((totalSec % 86400) / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+
+      const prefix = Date.now() >= COUNTDOWN_TARGET.getTime() ? '已过去' : '还剩';
+      el.innerHTML = `${prefix} <span class="countdown-value">${days}天 ${hours}小时 ${minutes}分钟 ${seconds}秒</span>`;
+    }
+
+    function startCountdown() {
+      updateCountdown();
+      if (countdownTimerId) clearInterval(countdownTimerId);
+      countdownTimerId = setInterval(updateCountdown, 1000);
+    }
+
+    startCountdown();
+
     const STORAGE_KEY = 'todo-app-data';
 
     const STATUS_ORDER = ['pending', 'completed', 'on_hold'];
